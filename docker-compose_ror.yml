@@ -1,0 +1,96 @@
+version: '3.8'
+
+configs:
+  kibana_config:
+    file: /storage/nfs/configs/elk_stack/kibana_ror.yml
+  ror:
+    file: /storage/nfs/configs/elk_stack/readonlyrest.yml
+
+services: 
+  elasticsearch:
+    image: khabel/elasticsearch
+    environment: 
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.monitoring.collection.enabled=true
+    configs:
+      - source: ror
+        target: /usr/share/elasticsearch/config/readonlyrest.yml
+    volumes: 
+      - /storage/nfs/data/elk:/usr/share/elasticsearch/data
+    networks: 
+      - logging-network
+    healthcheck:
+      test: ["CMD", "curl","-s" ,"-f", "http://localhost:9200/_cat/health"]
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.1.1
+    environment: 
+      - xpack.monitoring.enabled=true
+      - xpack.monitoring.elasticsearch.hosts=http://elasticsearch:9200
+      - http.host='0.0.0.0'
+    depends_on: 
+      - elasticsearch
+    ports:
+      - 5044:5044
+      - 12201:12201/udp
+    volumes:
+      - /storage/nfs/configs/elk_stack/config/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro 
+    networks:
+      - logging-network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.1.1
+    depends_on:
+      - logstash
+    ports: 
+      - 5601:5601
+    configs:
+      - source: kibana_config
+        target: /usr/share/kibana/config/kibana.yml
+    networks: 
+      - logging-network
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:7.1.1
+    user: root
+    deploy:
+      mode: global
+    networks:
+      - logging-network
+    volumes:
+      - /storage/nfs/configs/elk_stack/config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
+      - /var/log/:/var/log/
+      - /storage/nfs/logs:/var/log/host
+      - /var/lib/docker/containers:/var/lib/docker/containers
+      - /var/run/docker.sock:/var/run/docker.sock
+
+
+  # filebeat:
+  #   user: root #To read the docker socket
+  #   image: "docker.elastic.co/beats/filebeat:7.1.1"
+  #   volumes:
+  #     - /storage/nfs/configs/elk_stack/config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
+  #     - /var/log/:/var/log/
+  #     - /var/lib/docker/containers:/var/lib/docker/containers
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   networks:
+  #     - logging-network
+  #   command: filebeat -e -strict.perms=false
+
+  # auditbeat:
+  #   hostname: auditbeat
+  #   user: root #To read the docker socket
+  #   image: "docker.elastic.co/beats/auditbeat:7.1.1"
+  #   volumes:
+  #     #Mount the Auditbeat configuration so users can make edits.
+  #     - /storage/nfs/configs/elk_stack/config/auditbeat.yml:/usr/share/auditbeat/auditbeat.yml
+  #     #Allows us to report on docker from the hosts information.
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: auditbeat -e -strict.perms=false
+  #   networks: 
+  #     - logging-network
+
+networks: 
+  logging-network:
+    driver: overlay

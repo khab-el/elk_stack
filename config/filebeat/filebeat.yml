@@ -1,0 +1,29 @@
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+
+filebeat.config:
+  modules:
+    path: ${path.config}/modules.d/*.yml
+    reload.enabled: false
+
+filebeat.modules:
+#Nginx Module to consume to access and error logs from mounted volume
+- module: nginx
+  access:
+    var.paths: ["/var/log/host/nginx/access.log*"]
+  error:
+    var.paths: ["/var/log/host/nginx/error.log*"]
+
+- module: auditd
+  log:
+    enabled: true
+    var.paths: ["/var/log/audit/audit.log*"]
+
+filebeat.inputs:
+- type: log 
+  paths:
+    - /var/log/audit/audit.log*
+    - /var/log/host/*/*
+    - /var/log/secure*
+    - /var/lib/docker/containers/*/*.log
+

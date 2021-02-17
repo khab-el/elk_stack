@@ -1,0 +1,130 @@
+version: '3.8'
+
+configs:
+  nginx_log:
+    file: /storage/nfs/configs/elk_stack/nginx/nginx_log.conf
+  nginx:
+    file: /storage/nfs/configs/elk_stack/nginx/nginx_copy.conf
+  # kibana_config:
+  #   file: /storage/nfs/config/elk_stack/kibana.yml
+
+services: 
+
+  # nginx:
+  #   image: nginx
+  #   ports:
+  #     - 80:80
+  #   networks:
+  #     - logging-network
+  #   # configs:
+  #   #   - source: nginx
+  #   #     target: /etc/nginx/nginx.conf
+  #   #   - source: nginx
+  #   #     target: /etc/nginx/conf.d/default.conf
+  #   volumes:
+  #     - /storage/nfs/configs/elk_stack/nginx/nginx_copy.conf:/etc/nginx/conf.d/default.conf:ro
+
+  ldap:
+    image: bahaaldine/docker-ldap
+    volumes:
+      - "/storage/nfs/configs/elk_stack/config/conf/ldap:/tmp/files"
+    ports:
+      - "389:389"
+    networks: 
+      - logging-network
+
+  # logon:
+  #   image: khabel/logon_ldap
+  #   environment:
+  #     - LDAP_HOST=ldap:389
+  #   ports:
+  #     - "5000:5000"
+  #   networks: 
+  #     - logging-network
+
+  nginx:
+    image: 10.80.3.3:9080/nginx_ldap
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager ]
+    ports:
+      - 5601:5601
+    networks: 
+      - logging-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /storage/nfs/configs/elk_stack/nginx/nginx.conf:/etc/nginx/nginx.conf
+      
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.1.1
+    environment: 
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.monitoring.collection.enabled=true
+    volumes: 
+      - /storage/nfs/data/elk:/usr/share/elasticsearch/data
+    networks: 
+      - logging-network
+    healthcheck:
+      test: ["CMD", "curl","-s" ,"-f", "http://localhost:9200/_cat/health"]
+
+  # logstash:
+  #   image: docker.elastic.co/logstash/logstash:7.1.1
+  #   environment: 
+  #     - xpack.monitoring.enabled=true
+  #     - xpack.monitoring.elasticsearch.hosts=http://admin:password@elasticsearch:9200
+  #     - http.host='0.0.0.0'
+  #   depends_on: 
+  #     - elasticsearch
+  #   ports:
+  #     - 5044:5044
+  #     - 12201:12201/udp
+  #   volumes:
+  #     - config/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro 
+  #   networks:
+  #     - logging-network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.1.1
+    depends_on:
+      - logstash
+    # ports: 
+    #   - 5601:5601
+    volumes:
+      - /storage/nfs/configs/elk_stack/kibana.yml:/usr/share/kibana/config/kibana.yml
+    # configs:
+    #   - source: kibana_config
+    #     target: /usr/share/kibana/config/kibana.yml
+    networks: 
+      - logging-network
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:7.1.1
+    user: root
+    deploy:
+      mode: global
+    networks:
+      - logging-network
+    volumes:
+      - /storage/nfs/configs/elk_stack/config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/log/:/var/log/
+      - /var/lib/docker/containers:/var/lib/docker/containers
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # auditbeat:
+  #   hostname: auditbeat
+  #   user: root #To read the docker socket
+  #   image: "docker.elastic.co/beats/auditbeat:7.1.1"
+  #   volumes:
+  #     #Mount the Auditbeat configuration so users can make edits.
+  #     - /storage/nfs/configs/elk_stack/config/auditbeat.yml:/usr/share/auditbeat/auditbeat.yml
+  #     #Allows us to report on docker from the hosts information.
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: auditbeat -e -strict.perms=false
+  #   networks: 
+  #     - logging-network
+
+networks: 
+  logging-network:
+    driver: overlay

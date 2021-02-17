@@ -1,0 +1,66 @@
+readonlyrest:
+    enable: true
+    # force_load_from_file: true
+    response_if_req_forbidden: Forbidden request
+    access_control_rules:
+
+    # - name: "crft users"
+    #   kibana_access: admin
+    #   groups: ["Users"]
+    #   kibana_index: .kibana
+
+    - name: "::KIBANA-SRV::"
+      auth_key: kibana:kibana
+      verbosity: error
+
+    - name: "::ADMIN_GRP::"
+      groups: ["ROR (admin)"]
+      kibana_access: admin
+      kibana_index: .kibana
+
+    - name: "::Infosec::"
+      groups: ["Infosec"]
+      kibana_access: rw
+      kibana_hide_apps: ["readonlyrest_kbn", "timelion"]
+      kibana_index: ".kibana_infosec"
+
+    - name: "Technology users"
+      kibana_access: "admin"
+      groups: ["Users"]
+    
+    users:
+    - username: admin
+      auth_key: admin:dev
+      groups: ["ROR (admin)", "Infosec"] 
+
+    - username: bahaaldine
+      groups: ["Users"]
+      ldap_authentication: "ldap1" 
+
+    # - name: Accept requests from users in group crft on .kibana
+    #   type: allow                                           # Optional, defaults to "allow", will omit from now on.
+    #   kibana_access: rw
+    #   ldap_auth:
+    #     name: "ldap1"                                       # ldap name from below 'ldaps' section
+    #     groups: ["crft"]                                # group within 'ou=Groups,dc=example,dc=com'
+    #   indices: ["*",".kibana*",".apm*"]
+    #   kibana_index: .kibana
+
+
+    ldaps:
+    - name: ldap1
+      host: "ldap"
+      port: 389                                                     # optional, default 389
+      ssl_enabled: false
+      ssl_trust_all_certs: false
+      bind_dn: "cn=admin,dc=elastic,dc=co"                         # optional, skip for anonymous bind
+      bind_password: "password"                                     # optional, skip for anonymous bind
+      user_id_attribute: "cn"
+      search_user_base_DN: "ou=Users,dc=elastic,dc=co"
+      search_groups_base_DN: "ou=Users,dc=elastic,dc=co"
+      unique_member_attribute: "uniqueMember"                       # default "uniqueMember"
+      connection_pool_size: 10                                      # optional, default 30
+      connection_timeout_in_sec: 10                                 # optional, default 1
+      request_timeout_in_sec: 10                                    # optional, default 1
+      cache_ttl_in_sec: 60                                          # optional, default 0 - cache disabled
+
